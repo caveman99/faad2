@@ -1,0 +1,17 @@
+*.lo
+*.o
+*.a
+*.la
+
+.deps
+.libs
+
+Makefile
+config.h
+config.log
+config.status
+faad2.spec
+frontend/faad
+libtool
+stamp-h1
+
