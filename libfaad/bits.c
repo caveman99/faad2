@@ -100,6 +100,7 @@ uint8_t faad_byte_align(bitfile *ld)
 
     if (remainder)
     {
+        fprintf(stderr, " byte_align flush %d\n", 8 - remainder);
         faad_flushbits(ld, 8 - remainder);
         return (uint8_t)(8 - remainder);
     }

@@ -399,7 +399,9 @@ static void decode_cpe(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo, bitfi
     hDecoder->element_id[hDecoder->fr_ch_ele] = id_syn_ele;
 
     /* decode the element */
+    fprintf(stderr, "  decode channel_pair_element\n");
     hInfo->error = channel_pair_element(hDecoder, ld, channels, &tag);
+    fprintf(stderr, "  decode channel_pair_element done\n");
 
     /* map output channel position to internal data channels */
     if (hDecoder->pce_set)
@@ -418,6 +420,9 @@ static void decode_cpe(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo, bitfi
 void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
                     bitfile *ld, program_config *pce, drc_info *drc)
 {
+    static int raw_data_block_count = 0;
+    fprintf(stderr, "raw_data_block #%d\n", raw_data_block_count++);
+
     uint8_t id_syn_ele;
     uint8_t ele_this_frame = 0;
 
@@ -425,6 +430,7 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
     hDecoder->fr_ch_ele = 0;
     hDecoder->first_syn_ele = 25;
     hDecoder->has_lfe = 0;
+
 
 #ifdef ERROR_RESILIENCE
     if (hDecoder->object_type < ER_OBJECT_START)
@@ -436,6 +442,7 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
         {
             switch (id_syn_ele) {
             case ID_SCE:
+                fprintf(stderr, " raw_data_block ID_SCE\n");
                 ele_this_frame++;
                 if (hDecoder->first_syn_ele == 25) hDecoder->first_syn_ele = id_syn_ele;
                 decode_sce_lfe(hDecoder, hInfo, ld, id_syn_ele);
@@ -443,13 +450,16 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
                     return;
                 break;
             case ID_CPE:
+                fprintf(stderr, " raw_data_block ID_CPE\n");
                 ele_this_frame++;
                 if (hDecoder->first_syn_ele == 25) hDecoder->first_syn_ele = id_syn_ele;
                 decode_cpe(hDecoder, hInfo, ld, id_syn_ele);
+                fprintf(stderr, " raw_data_block done decoding cpe\n");
                 if (hInfo->error > 0)
                     return;
                 break;
             case ID_LFE:
+                fprintf(stderr, " raw_data_block ID_LFE\n");
 #ifdef DRM
                 hInfo->error = 32;
 #else
@@ -461,6 +471,7 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
                     return;
                 break;
             case ID_CCE: /* not implemented yet, but skip the bits */
+                fprintf(stderr, " raw_data_block ID_CCE\n");
 #ifdef DRM
                 hInfo->error = 32;
 #else
@@ -475,10 +486,12 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
                     return;
                 break;
             case ID_DSE:
+                fprintf(stderr, " raw_data_block ID_DSE\n");
                 ele_this_frame++;
                 data_stream_element(hDecoder, ld);
                 break;
             case ID_PCE:
+                fprintf(stderr, " raw_data_block ID_PCE\n");
                 if (ele_this_frame != 0)
                 {
                     hInfo->error = 31;
@@ -493,6 +506,7 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
                 //hDecoder->pce_set = 1;
                 break;
             case ID_FIL:
+                fprintf(stderr, " raw_data_block ID_FIL\n");
                 ele_this_frame++;
                 /* one sbr_info describes a channel_element not a channel! */
                 /* if we encounter SBR data here: error */
@@ -504,7 +518,12 @@ void raw_data_block(NeAACDecStruct *hDecoder, NeAACDecFrameInfo *hInfo,
                     )) > 0)
                     return;
                 break;
+            default:
+                fprintf(stderr, " raw_data_block ?UNKNOWN?\n");
+                break;
             }
+
+            fprintf(stderr, " raw_data_block processed %lu bits\n", faad_get_processed_bits(ld));
         }
 #ifdef ERROR_RESILIENCE
     } else {
@@ -653,6 +672,7 @@ static uint8_t channel_pair_element(NeAACDecStruct *hDecoder, bitfile *ld,
         DEBUGVAR(1,39,"channel_pair_element(): element_instance_tag"));
     *tag = cpe.element_instance_tag;
 
+
     if ((cpe.common_window = faad_get1bit(ld
         DEBUGVAR(1,40,"channel_pair_element(): common_window"))) & 1)
     {
@@ -706,11 +726,13 @@ static uint8_t channel_pair_element(NeAACDecStruct *hDecoder, bitfile *ld,
         ics1->ms_mask_present = 0;
     }
 
+
     if ((result = individual_channel_stream(hDecoder, &cpe, ld, ics1,
         0, spec_data1)) > 0)
     {
         return result;
     }
+
 
 #ifdef ERROR_RESILIENCE
     if (cpe.common_window && (hDecoder->object_type >= ER_OBJECT_START) &&
@@ -733,6 +755,7 @@ static uint8_t channel_pair_element(NeAACDecStruct *hDecoder, bitfile *ld,
         }
     }
 #endif
+
 
     if ((result = individual_channel_stream(hDecoder, &cpe, ld, ics2,
         0, spec_data2)) > 0)
@@ -1058,14 +1081,24 @@ static uint8_t fill_element(NeAACDecStruct *hDecoder, bitfile *ld, drc_info *drc
             DEBUGVAR(1,66,"fill_element(): extra count")) - 1;
     }
 
+    fprintf(stderr, "  fill_element count %d bits\n", 8*count);
+
     if (count > 0)
     {
 #ifdef SBR_DEC
         bs_extension_type = (uint8_t)faad_showbits(ld, 4);
 
+        if (bs_extension_type == EXT_SBR_DATA) {
+            fprintf(stderr, "  fill_element bs_extension_type EXT_SBR_DATA\n");
+        }
+        else if (bs_extension_type == EXT_SBR_DATA_CRC) {
+            fprintf(stderr, "  fill_element bs_extension_type EXT_SBR_DATA_CRC\n");
+        }
+
         if ((bs_extension_type == EXT_SBR_DATA) ||
             (bs_extension_type == EXT_SBR_DATA_CRC))
         {
+
             if (sbr_ele == INVALID_SBR_ELEMENT)
                 return 24;
 
@@ -1107,6 +1140,7 @@ static uint8_t fill_element(NeAACDecStruct *hDecoder, bitfile *ld, drc_info *drc
 #ifndef DRM
             while (count > 0)
             {
+                fprintf(stderr, "  fill_element bs_extension_type=%d\n", bs_extension_type);
                 count -= extension_payload(ld, drc, count);
             }
 #else
@@ -2159,19 +2193,22 @@ static uint16_t extension_payload(bitfile *ld, drc_info *drc, uint16_t count)
     uint8_t extension_type = (uint8_t)faad_getbits(ld, 4
         DEBUGVAR(1,87,"extension_payload(): extension_type"));
 
+    fprintf(stderr, "   extension_payload %d\n", extension_type);
     switch (extension_type)
     {
     case EXT_DYNAMIC_RANGE:
+        fprintf(stderr, "   extension_payload EXT_DYNAMIC_RANGE\n");
         drc->present = 1;
         n = dynamic_range_info(ld, drc);
         return n;
     case EXT_FILL_DATA:
         /* fill_nibble = */ faad_getbits(ld, 4
-            DEBUGVAR(1,136,"extension_payload(): fill_nibble")); /* must be ‘0000’ */
+                DEBUGVAR(1,136,"extension_payload(): fill_nibble")); /* must be ‘0000’ */
+        fprintf(stderr, "   extension_payload EXT_FILL_DATA discard %d bits\n", 8*(count-1) + 4);
         for (i = 0; i < count-1; i++)
         {
             /* fill_byte[i] = */ faad_getbits(ld, 8
-                DEBUGVAR(1,88,"extension_payload(): fill_byte")); /* must be ‘10100101’ */
+                    DEBUGVAR(1,88,"extension_payload(): fill_byte")); /* must be ‘10100101’ */
         }
         return count;
     case EXT_DATA_ELEMENT:
@@ -2180,6 +2217,7 @@ static uint16_t extension_payload(bitfile *ld, drc_info *drc, uint16_t count)
         switch (data_element_version)
         {
         case ANC_DATA:
+            fprintf(stderr, "   extension_payload EXT_DATA_ELEMENT ANC_DATA\n");
             loopCounter = 0;
             dataElementLength = 0;
             do {
@@ -2196,16 +2234,20 @@ static uint16_t extension_payload(bitfile *ld, drc_info *drc, uint16_t count)
                 return (dataElementLength+loopCounter+1);
             }
         default:
+            fprintf(stderr, "   extension_payload EXT_DATA_ELEMENT default\n");
             align = 0;
         }
     case EXT_FIL:
     default:
+        fprintf(stderr, "   extension_payload EXT_FIL or default\n");
         faad_getbits(ld, align
             DEBUGVAR(1,88,"extension_payload(): fill_nibble"));
+        fprintf(stderr, "   extension_payload discard %d bits\n", 8*(count-1));
         for (i = 0; i < count-1; i++)
         {
             /* other_bits[i] = */ faad_getbits(ld, 8
                DEBUGVAR(1,89,"extension_payload(): fill_bit"));
+
         }
         return count;
     }
